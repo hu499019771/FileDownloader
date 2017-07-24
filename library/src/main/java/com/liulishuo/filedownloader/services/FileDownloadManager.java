@@ -17,7 +17,13 @@
 package com.liulishuo.filedownloader.services;
 
 
+import android.text.TextUtils;
+
 import com.liulishuo.filedownloader.IThreadPoolMonitor;
+import com.liulishuo.filedownloader.download.CustomComponentHolder;
+import com.liulishuo.filedownloader.download.DownloadLaunchRunnable;
+import com.liulishuo.filedownloader.download.DownloadRunnable;
+import com.liulishuo.filedownloader.model.ConnectionModel;
 import com.liulishuo.filedownloader.model.FileDownloadHeader;
 import com.liulishuo.filedownloader.model.FileDownloadModel;
 import com.liulishuo.filedownloader.model.FileDownloadStatus;
@@ -25,10 +31,7 @@ import com.liulishuo.filedownloader.util.FileDownloadHelper;
 import com.liulishuo.filedownloader.util.FileDownloadLog;
 import com.liulishuo.filedownloader.util.FileDownloadUtils;
 
-import java.io.File;
 import java.util.List;
-
-import okhttp3.OkHttpClient;
 
 /**
  * The downloading manager in FileDownloadService, which is used to control all download-inflow.
@@ -37,22 +40,17 @@ import okhttp3.OkHttpClient;
  * boolean)}.
  *
  * @see FileDownloadThreadPool
- * @see FileDownloadRunnable
+ * @see DownloadLaunchRunnable
+ * @see DownloadRunnable
  */
-class FileDownloadMgr implements IThreadPoolMonitor {
+class FileDownloadManager implements IThreadPoolMonitor {
     private final FileDownloadDatabase mDatabase;
-    private final OkHttpClient mClient;
     private final FileDownloadThreadPool mThreadPool;
-    private final FileDownloadHelper.OutputStreamCreator mOutputStreamCreator;
 
-    public FileDownloadMgr() {
-
-        final DownloadMgrInitialParams params = FileDownloadHelper.getDownloadMgrInitialParams();
-
-        this.mDatabase = params.createDatabase();
-        this.mClient = params.createOkHttpClient();
-        this.mThreadPool = new FileDownloadThreadPool(params.getMaxNetworkThreadCount());
-        this.mOutputStreamCreator = params.createOutputStreamCreator();
+    public FileDownloadManager() {
+        final CustomComponentHolder holder = CustomComponentHolder.getImpl();
+        this.mDatabase = holder.getDatabaseInstance();
+        this.mThreadPool = new FileDownloadThreadPool(holder.getMaxNetworkThreadCount());
     }
 
     // synchronize for safe: check downloading, check resume, update data, execute runnable
@@ -61,8 +59,15 @@ class FileDownloadMgr implements IThreadPoolMonitor {
                                    final int callbackProgressMinIntervalMillis,
                                    final int autoRetryTimes, final boolean forceReDownload,
                                    final FileDownloadHeader header, final boolean isWifiRequired) {
+        if (FileDownloadLog.NEED_LOG) {
+            FileDownloadLog.d(this, "request start the task with url(%s) path(%s) isDirectory(%B)",
+                    url, path, pathAsDirectory);
+        }
+
         final int id = FileDownloadUtils.generateId(url, path, pathAsDirectory);
         FileDownloadModel model = mDatabase.find(id);
+
+        List<ConnectionModel> dirConnectionModelList = null;
 
         if (!pathAsDirectory && model == null) {
             // try dir data.
@@ -73,6 +78,8 @@ class FileDownloadMgr implements IThreadPoolMonitor {
                 if (FileDownloadLog.NEED_LOG) {
                     FileDownloadLog.d(this, "task[%d] find model by dirCaseId[%d]", id, dirCaseId);
                 }
+
+                dirConnectionModelList = mDatabase.findConnectionModel(dirCaseId);
             }
         }
 
@@ -85,11 +92,27 @@ class FileDownloadMgr implements IThreadPoolMonitor {
 
         final String targetFilePath = model != null ? model.getTargetFilePath() :
                 FileDownloadUtils.getTargetFilePath(path, pathAsDirectory, null);
-
         if (FileDownloadHelper.inspectAndInflowDownloaded(id, targetFilePath, forceReDownload,
                 true)) {
             if (FileDownloadLog.NEED_LOG) {
                 FileDownloadLog.d(this, "has already completed downloading %d", id);
+            }
+            return;
+        }
+
+        final long sofar = model != null ? model.getSoFar() : 0;
+        final String tempFilePath = model != null ? model.getTempFilePath() :
+                FileDownloadUtils.getTempPath(targetFilePath);
+        if (FileDownloadHelper.inspectAndInflowConflictPath(id, sofar, tempFilePath, targetFilePath,
+                this)) {
+            if (FileDownloadLog.NEED_LOG) {
+                FileDownloadLog.d(this, "there is an another task with the same target-file-path %d %s",
+                        id, targetFilePath);
+                // because of the file is dirty for this task.
+                if (model != null) {
+                    mDatabase.remove(id);
+                    mDatabase.removeConnections(id);
+                }
             }
             return;
         }
@@ -105,12 +128,26 @@ class FileDownloadMgr implements IThreadPoolMonitor {
             if (model.getId() != id) {
                 // in try dir case.
                 mDatabase.remove(model.getId());
+                mDatabase.removeConnections(model.getId());
+
                 model.setId(id);
                 model.setPath(path, pathAsDirectory);
+                if (dirConnectionModelList != null) {
+                    for (ConnectionModel connectionModel : dirConnectionModelList) {
+                        connectionModel.setId(id);
+                        mDatabase.insertConnectionModel(connectionModel);
+                    }
+                }
 
                 needUpdate2DB = true;
             } else {
-                needUpdate2DB = false;
+                if (!TextUtils.equals(url, model.getUrl())) {
+                    // for cover the case of reusing the downloaded processing with the different url( using with idGenerator ).
+                    model.setUrl(url);
+                    needUpdate2DB = true;
+                } else {
+                    needUpdate2DB = false;
+                }
             }
         } else {
             if (model == null) {
@@ -123,6 +160,7 @@ class FileDownloadMgr implements IThreadPoolMonitor {
             model.setSoFar(0);
             model.setTotal(0);
             model.setStatus(FileDownloadStatus.pending);
+            model.setConnectionCount(1);
             needUpdate2DB = true;
         }
 
@@ -131,10 +169,21 @@ class FileDownloadMgr implements IThreadPoolMonitor {
             mDatabase.update(model);
         }
 
+        final DownloadLaunchRunnable.Builder builder = new DownloadLaunchRunnable.Builder();
+
+        final DownloadLaunchRunnable runnable =
+                builder.setModel(model)
+                        .setHeader(header)
+                        .setThreadPoolMonitor(this)
+                        .setMinIntervalMillis(callbackProgressMinIntervalMillis)
+                        .setCallbackProgressMaxCount(callbackProgressTimes)
+                        .setForceReDownload(forceReDownload)
+                        .setWifiRequired(isWifiRequired)
+                        .setMaxRetryTimes(autoRetryTimes)
+                        .build();
+
         // - execute
-        mThreadPool.execute(new FileDownloadRunnable(mClient, this, mOutputStreamCreator, model,
-                mDatabase, autoRetryTimes, header, callbackProgressMinIntervalMillis,
-                callbackProgressTimes, forceReDownload, isWifiRequired));
+        mThreadPool.execute(runnable);
 
     }
 
@@ -146,116 +195,17 @@ class FileDownloadMgr implements IThreadPoolMonitor {
         return isDownloading(mDatabase.find(id));
     }
 
-    public static boolean isBreakpointAvailable(final int id, final FileDownloadModel model) {
-        return isBreakpointAvailable(id, model, null);
-    }
-
-    /**
-     * @return can resume by break point
-     */
-    public static boolean isBreakpointAvailable(final int id, final FileDownloadModel model,
-                                                final Boolean outputStreamSupportSeek) {
-        if (model == null) {
-            if (FileDownloadLog.NEED_LOG) {
-                FileDownloadLog.d(FileDownloadMgr.class, "can't continue %d model == null", id);
-            }
-            return false;
-        }
-
-        if (model.getTempFilePath() == null) {
-            if (FileDownloadLog.NEED_LOG) {
-                FileDownloadLog.d(FileDownloadMgr.class, "can't continue %d temp path == null", id);
-            }
-            return false;
-        }
-
-        return isBreakpointAvailable(id, model, model.getTempFilePath(), outputStreamSupportSeek);
-    }
-
-    public static boolean isBreakpointAvailable(final int id, final FileDownloadModel model,
-                                                final String path,
-                                                final Boolean outputStreamSupportSeek) {
-        boolean result = false;
-
-        do {
-            if (path == null) {
-                if (FileDownloadLog.NEED_LOG) {
-                    FileDownloadLog.d(FileDownloadMgr.class, "can't continue %d path = null", id);
-                }
-                break;
-            }
-
-            File file = new File(path);
-            final boolean isExists = file.exists();
-            final boolean isDirectory = file.isDirectory();
-
-            if (!isExists || isDirectory) {
-                if (FileDownloadLog.NEED_LOG) {
-                    FileDownloadLog.d(FileDownloadMgr.class, "can't continue %d file not suit, exists[%B], directory[%B]",
-                            id, isExists, isDirectory);
-                }
-                break;
-            }
-
-            final long fileLength = file.length();
-
-            if (model.getSoFar() == 0) {
-                if (FileDownloadLog.NEED_LOG) {
-                    FileDownloadLog.d(FileDownloadMgr.class, "can't continue %d the downloaded-record is zero.",
-                            id);
-                }
-                break;
-            }
-
-            if (fileLength < model.getSoFar() ||
-                    (model.getTotal() != -1  // not chunk transfer encoding data
-                            &&
-                            (fileLength > model.getTotal() || model.getSoFar() >= model.getTotal()))
-                    ) {
-                // dirty data.
-                if (FileDownloadLog.NEED_LOG) {
-                    FileDownloadLog.d(FileDownloadMgr.class, "can't continue %d dirty data" +
-                                    " fileLength[%d] sofar[%d] total[%d]",
-                            id, fileLength, model.getSoFar(), model.getTotal());
-                }
-                break;
-            }
-
-            if (outputStreamSupportSeek != null && !outputStreamSupportSeek &&
-                    model.getTotal() == fileLength) {
-                if (FileDownloadLog.NEED_LOG) {
-                    FileDownloadLog.d(FileDownloadMgr.class, "can't continue %d, because of the " +
-                                    "output stream doesn't support seek, but the task has already " +
-                                    "pre-allocated, so we only can download it from the very beginning.",
-                            id);
-                }
-                break;
-            }
-
-            result = true;
-        } while (false);
-
-
-        return result;
-    }
-
     public boolean pause(final int id) {
+        if (FileDownloadLog.NEED_LOG) {
+            FileDownloadLog.d(this, "request pause the task %d", id);
+        }
+
         final FileDownloadModel model = mDatabase.find(id);
         if (model == null) {
             return false;
         }
 
-        if (FileDownloadLog.NEED_LOG) {
-            FileDownloadLog.d(this, "paused %d", id);
-        }
-
         mThreadPool.cancel(id);
-        /**
-         * 耦合 by {@link FileDownloadRunnable#run()} 中的 {@link com.squareup.okhttp.Request.Builder#tag(Object)}
-         * 目前在okHttp里还是每个单独任务
-         */
-        // 之所以注释掉，不想这里回调error，okHttp中会根据okHttp所在被cancel的情况抛error
-//        mClient.cancel(id);
         return true;
     }
 
@@ -280,7 +230,17 @@ class FileDownloadMgr implements IThreadPoolMonitor {
             return 0;
         }
 
-        return model.getSoFar();
+        final int connectionCount = model.getConnectionCount();
+        if (connectionCount <= 1) {
+            return model.getSoFar();
+        } else {
+            final List<ConnectionModel> modelList = mDatabase.findConnectionModel(id);
+            if (modelList == null || modelList.size() != connectionCount) {
+                return 0;
+            } else {
+                return ConnectionModel.getTotalOffset(modelList);
+            }
+        }
     }
 
     public long getTotal(final int id) {
@@ -352,6 +312,11 @@ class FileDownloadMgr implements IThreadPoolMonitor {
         return isDownloading;
     }
 
+    @Override
+    public int findRunningTaskIdBySameTempPath(String tempFilePath, int excludeId) {
+        return mThreadPool.findRunningTaskIdBySameTempPath(tempFilePath, excludeId);
+    }
+
     public boolean clearTaskData(int id) {
         if (id == 0) {
             FileDownloadLog.w(this, "The task[%d] id is invalid, can't clear it.", id);
@@ -364,18 +329,12 @@ class FileDownloadMgr implements IThreadPoolMonitor {
         }
 
         mDatabase.remove(id);
+        mDatabase.removeConnections(id);
         return true;
     }
 
-    public static class Creator {
-        OkHttpClient createOkHttpClient() {
-            return new OkHttpClient();
-        }
-
-        FileDownloadDatabase createDatabase() {
-            return new DefaultDatabaseImpl();
-        }
+    public void clearAllTaskData() {
+        mDatabase.clear();
     }
-
 }
 

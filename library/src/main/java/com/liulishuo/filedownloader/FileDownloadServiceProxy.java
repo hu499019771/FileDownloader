@@ -33,6 +33,7 @@ import com.liulishuo.filedownloader.util.FileDownloadProperties;
  * separate `:filedownloader` process.
  */
 public class FileDownloadServiceProxy implements IFileDownloadServiceProxy {
+
     private final static class HolderClass {
         private final static FileDownloadServiceProxy INSTANCE = new FileDownloadServiceProxy();
     }
@@ -139,5 +140,10 @@ public class FileDownloadServiceProxy implements IFileDownloadServiceProxy {
     @Override
     public boolean clearTaskData(int id) {
         return handler.clearTaskData(id);
+    }
+
+    @Override
+    public void clearAllTaskData() {
+        handler.clearAllTaskData();
     }
 }

@@ -24,6 +24,7 @@ import android.content.Context;
 import android.content.ServiceConnection;
 import android.os.IBinder;
 
+import com.liulishuo.filedownloader.download.CustomComponentHolder;
 import com.liulishuo.filedownloader.event.DownloadServiceConnectChangedEvent;
 import com.liulishuo.filedownloader.model.FileDownloadStatus;
 import com.liulishuo.filedownloader.model.FileDownloadTaskAtom;
@@ -46,115 +47,79 @@ import java.util.List;
 public class FileDownloader {
 
     /**
-     * Initialize the FileDownloader.
+     * You can invoke this method anytime before you using the FileDownloader.
      * <p>
-     * <strong>Note:</strong> this method consumes 4~28ms in nexus 5. the most cost used for
-     * loading classes.
+     * If you want to register your own customize components please using {@link #setupOnApplicationOnCreate(Application)}
+     * on the {@link Application#onCreate()} instead.
      *
-     * @see #init(Context, FileDownloadHelper.OkHttpClientCustomMaker, int)
+     * @param context the context of Application or Activity etc..
+     */
+    public static void setup(Context context) {
+        FileDownloadHelper.holdContext(context.getApplicationContext());
+    }
+
+    /**
+     * Using this method to setup the FileDownloader only you want to register your own customize
+     * components for Filedownloader, otherwise just using {@link #setup(Context)} instead.
+     * <p/>
+     * Please invoke this method on the {@link Application#onCreate()} because of the customize
+     * components must be assigned before FileDownloader is running.
+     * <p/>
+     * Such as:
+     * <p/>
+     * class MyApplication extends Application {
+     *     ...
+     *     public void onCreate() {
+     *          ...
+     *          FileDownloader.setupOnApplicationOnCreate(this)
+     *              .idGenerator(new MyIdGenerator())
+     *              .database(new MyDatabase())
+     *              ...
+     *              .commit();
+     *          ...
+     *     }
+     *     ...
+     * }
+     * @param application the application.
+     * @return the customize components maker.
+     */
+    public static DownloadMgrInitialParams.InitCustomMaker setupOnApplicationOnCreate(Application application) {
+        final Context context = application.getApplicationContext();
+        FileDownloadHelper.holdContext(context);
+
+        DownloadMgrInitialParams.InitCustomMaker customMaker = new DownloadMgrInitialParams.InitCustomMaker();
+        CustomComponentHolder.getImpl().setInitCustomMaker(customMaker);
+
+        return customMaker;
+    }
+
+    /**
+     * @deprecated please use {@link #setup(Context)} instead.
      */
     public static void init(final Context context) {
-        init(context, null, 0);
+        if (context == null)
+            throw new IllegalArgumentException("the provided context must not be null!");
+
+        setup(context);
     }
 
 
     /**
-     * Initialize the FileDownloader.
-     * <p>
-     * <strong>Note:</strong> this method consumes 4~28ms in nexus 5. the most cost used for
-     * loading classes.
-     *
-     * @param context                 The application context.
-     * @param okHttpClientCustomMaker The okHttpClient customize maker, the okHttpClient will be used
-     *                                in the downloader service to downloading file. You can provide
-     *                                {@code null} for this value.
-     * @see #init(Context, FileDownloadHelper.OkHttpClientCustomMaker, int)
-     */
-    public static void init(final Context context,
-                            /** Nullable **/FileDownloadHelper.OkHttpClientCustomMaker okHttpClientCustomMaker) {
-        init(context, okHttpClientCustomMaker, 0);
-
-    }
-
-    /**
-     * Initialize the FileDownloader.
-     * <p>
-     * <strong>Note:</strong> this method consumes 4~28ms in nexus 5. the most cost used for
-     * loading classes.
-     *
-     * @param context                 The context.
-     * @param okHttpClientCustomMaker The okHttpClient customize maker, the okHttpClient will be used
-     *                                in the downloader service to downloading file. You can provide
-     *                                {@code null} for this value.
-     * @param maxNetworkThreadCount   The maximum count of the network thread, what is the number of
-     *                                simultaneous downloads in FileDownloader.
-     *                                If this value is 0, the value will be ignored and use
-     *                                {@link FileDownloadProperties#DOWNLOAD_MAX_NETWORK_THREAD_COUNT}
-     *                                which is defined in filedownloader.properties instead.
-     * @see #init(Application)
-     * @see com.liulishuo.filedownloader.util.FileDownloadHelper.OkHttpClientCustomMaker
-     * @see #setMaxNetworkThreadCount(int)
-     */
-    public static void init(final Context context,
-                            /** Nullable **/final FileDownloadHelper.OkHttpClientCustomMaker okHttpClientCustomMaker,
-                            /** [1,12] **/final int maxNetworkThreadCount) {
-        init(context, new DownloadMgrInitialParams.InitCustomMaker().
-                okHttpClient(okHttpClientCustomMaker).maxNetworkThreadCount(maxNetworkThreadCount));
-    }
-
-    /**
-     * * Initialize the FileDownloader.
-     * <p>
-     * <strong>Note:</strong> this method consumes 4~28ms in nexus 5. the most cost used for
-     * loading classes.
-     * <p>
-     * This method cache {@code context} in Main-Process and FileDownloader-Process, and if the
-     * {@code okHttpClientCustomMaker} is provided, FileDownloader will initialize the okHttpClient
-     * in the FileDownloadService settled downed process.
-     * <p/>
-     * <strong>Tips:</strong> As default, you need invoke this method in {@link Application#onCreate()}
-     * to make sure the {@code context} can be hold in both Main-Process and FileDownloader-Process.
-     * But if you set the downloader service running in the main process, you can invoke this method
-     * when you need use FileDownloader. Ref {@link FileDownloadProperties} to set the downloader
-     * service running in the main process.
-     *
-     * @param context The context.
-     * @param maker   Used to customize the download service.
+     * @deprecated please using {@link #setupOnApplicationOnCreate(Application)} instead.
      */
     public static void init(final Context context,
                             final DownloadMgrInitialParams.InitCustomMaker maker) {
         if (FileDownloadLog.NEED_LOG) {
-            FileDownloadLog.d(FileDownloader.class, "init Downloader");
+            FileDownloadLog.d(FileDownloader.class, "init Downloader with params: %s %s",
+                    context, maker);
         }
 
-        FileDownloadHelper.holdContext(context);
+        if (context == null)
+            throw new IllegalArgumentException("the provided context must not be null!");
 
-        if (FileDownloadUtils.isDownloaderProcess(context)) {
-            FileDownloadHelper.initializeDownloadMgrParams(maker);
+        FileDownloadHelper.holdContext(context.getApplicationContext());
 
-            try {
-                FileDownloadUtils.setMinProgressStep(FileDownloadProperties.getImpl().DOWNLOAD_MIN_PROGRESS_STEP);
-                FileDownloadUtils.setMinProgressTime(FileDownloadProperties.getImpl().DOWNLOAD_MIN_PROGRESS_TIME);
-            } catch (IllegalAccessException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    /**
-     * @deprecated Consider use {@link #init(Context)} instead.
-     */
-    public static void init(final Application application) {
-        init(application.getApplicationContext());
-    }
-
-    /**
-     * @deprecated Consider use {@link #init(Context, FileDownloadHelper.OkHttpClientCustomMaker)}
-     * instead.
-     */
-    public static void init(final Application application,
-                            FileDownloadHelper.OkHttpClientCustomMaker okHttpClientCustomMaker) {
-        init(application.getApplicationContext(), okHttpClientCustomMaker);
+        CustomComponentHolder.getImpl().setInitCustomMaker(maker);
     }
 
     private final static class HolderClass {
@@ -280,15 +245,12 @@ public class FileDownloader {
         FileDownloadTaskLauncher.getImpl().expire(listener);
         final List<BaseDownloadTask.IRunningTask> taskList =
                 FileDownloadList.getImpl().copy(listener);
-        synchronized (pauseLock) {
-            for (BaseDownloadTask.IRunningTask task : taskList) {
-                task.getOrigin().pause();
-            }
+        for (BaseDownloadTask.IRunningTask task : taskList) {
+            task.getOrigin().pause();
         }
     }
 
     private Runnable pauseAllRunnable;
-    private final static Object pauseLock = new Object();
 
     /**
      * Pause all tasks running in FileDownloader.
@@ -296,10 +258,8 @@ public class FileDownloader {
     public void pauseAll() {
         FileDownloadTaskLauncher.getImpl().expireAll();
         final BaseDownloadTask.IRunningTask[] downloadList = FileDownloadList.getImpl().copy();
-        synchronized (pauseLock) {
-            for (BaseDownloadTask.IRunningTask task : downloadList) {
-                task.getOrigin().pause();
-            }
+        for (BaseDownloadTask.IRunningTask task : downloadList) {
+            task.getOrigin().pause();
         }
         // double check, for case: File Download progress alive but ui progress has died and relived,
         // so FileDownloadList not always contain all running task exactly.
@@ -345,8 +305,8 @@ public class FileDownloader {
      * Normally used to deleting the data in filedownloader database, when it is paused or in
      * downloading status. If you want to re-download it clearly.
      * <p/>
-     * NO NEED clear the data when it is already completed downloading, because the data would be
-     * deleted when it completed downloading.
+     * <strong>Note:</strong> YOU NO NEED to clear the data when it is already completed downloading,
+     * because the data would be deleted when it completed downloading automatically by FileDownloader.
      * <p>
      * If there are tasks with the {@code id} in downloading, will be paused first;
      * If delete the data with the {@code id} in the filedownloader database successfully, will try
@@ -379,6 +339,21 @@ public class FileDownloader {
         }
 
         return false;
+    }
+
+    /**
+     * Clear all data in the filedownloader database.
+     * <p>
+     * <strong>Note:</strong> Normally, YOU NO NEED to clearAllTaskData manually, because the
+     * FileDownloader will maintain those data to ensure only if the data available for resuming
+     * can be kept automatically.
+     *
+     * @see #clear(int, String)
+     */
+    public void clearAllTaskData() {
+        pauseAll();
+
+        FileDownloadServiceProxy.getImpl().clearAllTaskData();
     }
 
     /**
@@ -701,7 +676,6 @@ public class FileDownloader {
      * @return whether is successful to set the max network thread count.
      * If there are any actively executing tasks in FileDownloader, you will receive a warn
      * priority log int the logcat and this operation would be failed.
-     * @see #init(Context, FileDownloadHelper.OkHttpClientCustomMaker, int)
      */
     public boolean setMaxNetworkThreadCount(final int count) {
         if (!FileDownloadList.getImpl().isEmpty()) {
@@ -761,7 +735,7 @@ public class FileDownloader {
         if (mQueuesHandler == null) {
             synchronized (INIT_QUEUES_HANDLER_LOCK) {
                 if (mQueuesHandler == null) {
-                    mQueuesHandler = new QueuesHandler(pauseLock);
+                    mQueuesHandler = new QueuesHandler();
                 }
             }
         }

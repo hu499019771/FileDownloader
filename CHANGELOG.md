@@ -2,6 +2,269 @@
 
 > [中文迭代日志](https://github.com/lingochamp/FileDownloader/blob/master/CHANGELOG-ZH.md)
 
+## Version 1.6.2
+
+_2017-07-16_
+
+#### Fix
+
+- Fix: Fix raise 'offset < 0' exception when FileDownloader downloading file with the one split connection range begin with larger than 1.99G. Closes #669
+
+## Version 1.6.1
+
+_2017-07-13_
+
+#### Enhancement
+
+- Import Practicability: Throw `GiveUpException` directly when the response `content-length` isn't equal to the expect `content-length` calculated from range. Closes #636
+
+#### Fix
+
+- Fix: Fix sync twice when downloading paused/error.
+- Fix: fix file is destroyed when you download chunked file from breakpoint.
+
+## Version 1.6.0
+
+_2017-07-07_
+
+#### Fix
+
+- Fix(no-response): Fix may occur no-respose when multiple connections complete fetch data simultaneously, more detail please move to [here](https://github.com/lingochamp/FileDownloader/issues/631#issuecomment-313451398). Closes #631
+
+## Version 1.5.9
+
+_2017-07-04_
+
+#### Fix
+
+- Fix(duplicate-permission): fix `INSTALL_FAILED_DUPLICATE_PERMISSION` when there are more than one application using FileDownloader lib 1.5.7 or more newer since Android 5.0. This problem is raised since v1.5.7, because of we declared permission for receiving completed status broadcast more secure, now we remove it to fix this problem. Closes #641
+
+## Version 1.5.8
+
+_2017-06-28_
+
+#### Fix
+
+- Fix(no-response): fix no-response when switch between pause and start for the same task very fast frequency. Closes #625
+
+## Version 1.5.7
+
+_2017-06-25_
+
+#### New Interfaces
+
+- Support the configuration `broadcast.completed` in `filedownloader.properties`: determine whether need post a broadcast when task is completed. Closes #605
+- Support accepting 201 http status. Closes #545
+- Support pause and resume for the `FileDownloadSerialQueue`. Closes #547
+- Handle the case of redirect(300、301、302、303、307、308) on FileDownloader self. Closes #611
+- Deprecated the `FileDownloader#init` and add the replacer `FileDownloader#setup` to let user invoke anytime before using `Filedownloader`. Closes #500
+
+> - If you want to using `broadcast.completed` and receive completed broadcast, you also need to register receiver with `filedownloader.intent.action.completed` action name on `AndroidManifest.xml` and please using `FileDownloadBroadcastHandler` class to parse the received `Intent`.
+> - Now, rather than using `FileDownloader#init`, if you want to register your own customize components for FileDownloader please invoking `FileDownloader.setupOnApplicationOnCreate(application):InitCustomMaker` on the `Application#onCreate`, otherwise you just need invoke `FileDownloader.setup(Context)` anytime before using `FileDownloader`.
+
+#### Fix
+
+- Fix: fix `FileDownloadQueueSet` can't handle the case of disable wifi-required. Thanks @qtstc
+- Fix(output-stream): fix broken support for output-stream when it don't support seek. Closes #622
+
+#### Enhancement
+
+- Improve Practicability: Cover the case of reusing the downloaded processing with the different url( using with `idGenerator` ). Closes #617
+
+## Version 1.5.6
+
+_2017-06-18_
+
+#### Fix
+
+- Fix(crash): fix raise NPE crash when require paused a task and invoking `findRunningTaskIdBySameTempPath` at the same time. Closes #613
+- Fix(crash): fix raise `IllegalArgumentException` when response code is 206 and its ETAG is changed. Closes #612
+- Fix(crash): fix raise `FileDownloadNetworkPolicyException` unhandled exception, when user enable wifi-required but no wifi-state. Thanks @qtstc
+- Fix(crash): fix raise `IllegalStateException` when user upgrades from `v1.4.3` or older version to `v1.5.2` or newer version directly and some more conditions, more detail please move to #610
+- Fix(crash): fix some small probability case raise `IllegalStateException` when callback-flow has been final but occurring completed/error at the same time.
+- Fix(no-response): fix no-response after start download and receive connected callback because the resource state has been changed during the connection of verification and connections of fetch data.
+
+#### Enhancement
+
+- Improve Practicability: callback `error` directly when create the parent directory failed. Closes #542
+- Improve Practicability: handle the case of response code is `416`. Closes #612
+
+## Version 1.5.5
+
+_2017-06-12_
+
+#### Fix
+
+- Fix(max-network-thread-count): fix the `download.max-network-thread-count` not work and there are no restrictions on the number of tasks downloaded at the same time since v1.5.0 when tasks runs on the multi-connection Closes #607
+
+## Version 1.5.4
+
+_2017-06-11_
+
+#### New Interfaces
+
+- Support customizing the download task identify generator through `IdGenerator`. Closes #224
+
+#### Enhancement
+
+- Improve Practicability: Decoupling the filedownload-database with filedownload-model, let filedownload-database only care about database operation.
+- Improve Practicability: Decoupling the database initial-maintain from the filedownload-database default implementation to let the customized database can be maintained.
+
+## Version 1.5.3
+
+_2017-06-08_
+
+#### Fix
+
+- Fix(crash): Fix divide by zero on calculating average speed when download completed and connected at the same time. Refs #601
+- Fix(crash): Fix raise NPE crash when you require pause the task between executed the fetch-data-task and fetch-data-task has not yet started. Closes #601
+
+## Version 1.5.2
+
+_2017-06-07_
+
+#### Fix
+
+- Fix(crash): Fix raising NPE crash or ConcurrentModificationException when the Task is paused or error with the connection is completing at the same time. Closes #598
+- Fix(crash): Fix raising NPE crash when pause the `FetchDataTask` and it still without any time to sync data to database or file-system. Refs #598
+- Fix(crash): Fix raising NPE crash when using the multiple connections to download and connect failed or create `FetchDataTast` failed. Refs #598
+- Fix(speed-calculate): Fix the speed result is `0` when ignore all processing callbacks and just using `FinishListener`.
+- Fix(finish-listener): Fix there isn't `over` callback for the `FinishListener` when the file has already been downloaded in the past.
+
+#### Enhancement
+
+- Improve Performance: Enable the WAL for the default sqlite to speed up sql operation because the most of our case is concurrently accessed and modified by multiple threads at the same time.
+
+## Version 1.5.1
+
+_2017-06-05_
+
+#### Fix
+
+- Fix(crash): Fix the NPE crash when don't provided the `InitCustomMaker` on `FileDownloader#init`. Closes #592
+- Fix(callback): Fix on the `pending` callback you can't get the right `sofarBytes` when there are several connections served for the task and the task is resuming from the breakpoint.
+- Fix(speed-monitor): Correct the result of the total average speed when the task resume from a breakpoint on `IDownloadSpeed.Monitor`.
+
+#### Enhancement
+
+- Improve Robust: Sync all process on fetch task manually when it is paused to make the process can be persist.
+- Improve Robust: Raise `IllegalArgumentException` when provide `context` is null on `FileDownloader.init` to expose the problem earlier.
+
+## Version 1.5.0
+
+_2017-06-05_
+
+#### New Interfaces
+
+- Support multiple-connection(multiple threads) for one downloading task.  Closes #102
+- Support `ConnectionCountAdapter` to customize connection count for each task(you can set it through `FileDownloader#init`).
+
+#### Enhancement
+
+- Improve Performance: Refactor whole download logic and origin callback logic and remove 1000 line class `FileDownloadRunnable`.
+
+The default connection count strategy for each task, you can customize it through `ConnectionCountAdapter`:
+
+- one connection: file length [0, 1MB)
+- two connections: file length [1MB, 5MB)
+- three connections: file length [5MB, 50MB)
+- four connections: file length [50MB, 100MB)
+- five connections: file length [100MB, -]
+
+## Version 1.4.3
+
+_2017-05-07_
+
+#### Fix
+
+- Fix: Remove redundant deprecated method: `FileDownloader#init(Application)`, because `Application` is implement of `Context`.
+
+## Version 1.4.2
+
+_2017-03-15_
+
+#### Fix
+
+- Fix(Same File Path): Avoid two tasks writing to the same file simultaneously, Once there is an another running task with the same target path to the current task's, the current task will receive the `PathConflictException` to refused start downloading. Closes #471
+
+#### New Interfaces
+
+- Add `FileDownloadSerialQueue#getWaitingTaskCount`: Get the count of tasks which is waiting on the serial-queue instance. Refs #345
+
+## Version 1.4.1
+
+_2017-02-03_
+
+#### Fix
+
+- Fix(High concurrency): Fix occurring the NPE crash because of it still receiving message-snapshot in the messenger but the host task has been assigned to null since it has been received over-status message-snapshot. Closes #462
+- Fix(`FileDownloadHttpException`): Fix occurring the `IllegalStateException` because of cannot access request header fields after connection is set when occurring http-exception. Closes #458
+
+## Version 1.4.0
+
+_2017-01-11_
+
+#### Enhancement
+
+- Improve Performance: Optimize the logic in `FileDownloader#init`, let it lighter(just do some action like assign `context` and `maker`)
+
+#### Fix
+
+- Fix(pause): fix can't stop the task when occurring the high concurrency event about pausing task after starting it in very close time. Closes #402
+- Fix(init FileDownloader): fix the very low frequent crash when init FileDownloader on the process the `FileDownloadService` settled on. Closes #420  
+- Fix(FileDownloadHttpException): fix params can't match the `formatter` when occur `FileDownloadHttpException` Closes #438
+
+## Version 1.3.9
+
+_2016-12-18_
+
+### Important:
+
+- Since this version you can customize you own [FileDownloadConnection][FileDownloadConnection-java-link] component, we use [this one][FileDownloadUrlConnection-java-link] as default.
+- Since this version, FileDownloader don't dependency the okhttp as default. (If you still want to use the okhttp as your connection component, you can integrate [this repo](https://github.com/Jacksgong/filedownloader-okhttp3-connection) feel free)
+
+> If you still need configure `timeout`、`proxy` for the connection component, but you don't want to implement your own one, don't worry, I implement it for the default connection component too, just move to : [DemoApplication](https://github.com/lingochamp/FileDownloader/blob/master/demo/src/main/java/com/liulishuo/filedownloader/demo/DemoApplication.java#L35), check the code if you want.
+
+#### New Interfaces
+
+- Add `FileDownloadQueueSet#reuseAndStart`: Add reuseAndStart function to the queue-set to reuse task instances before start them. Ref #383
+- Add `FileDownloadConnection`: Support customize the connection component for FileDownloader and remove the dependency of the okhttp as default. Closes #158
+
+## Version 1.3.0
+
+_2016-10-31_
+
+#### New Interfaces
+
+- Add `FileDownloadSerialQueue`: Easy to dynamically manage tasks and tasks in the queue will automatically start download one by one. Closes #345.
+- Remove the `callback` method in the `FileDownloadListener` class, besides adding the `FileDownloadListener#isInvalid` method to tell the FileDownloader whether the listener has already invalidated, which means it can't receive any messages.
+- Add `FileDownloader#clearAllTaskData`: Clear all data in the `filedownloader` database. Closes #361
+
+#### Enhancement
+
+- Improve Practicability(`FileDownloadListener#blackCompleted`): Ensure the `blockCompleted` callback method can accept any `Exception`. Closes #369.
+- Improve Practicability(service-not-connected): Print the tips with the cause in service-not-connected-helper, in this way, when you invoke some methods need the FileDownload service has already connected but not yet, FileDownloader will not only print causes in the `Logcat` but also print the tips.
+
+#### Fix
+
+- Fix(reuse): fix `BaseDownloadTask#reuse` is called shortly after the call to `BaseDownloadTask#pause` may raise an exception. Closes #329.
+
+## Version 1.2.2
+
+_2016-10-15_
+
+#### Fix
+
+- Fix(fatal-crash): fix when the task doesn't have `FileDownloadListener`, we can't receive the callback of `FileDownloadMonitor.IMonitor#onTaskOver` for it. Closes #348.
+
+## Version 1.2.1
+
+_2016-10-09_
+
+#### Fix
+
+- <s>Fix(fatal-crash): fix when the task doesn't have `FileDownloadListener`, we can't receive the callback of `FileDownloadMonitor.IMonitor#onTaskOver` for it. Closes #348. </s> Sorry for my mistake, this bug is still exist in 1.2.1 and finally fixed in 1.2.2.
+
 ## Version 1.2.0
 
 _2016-10-04_
@@ -484,3 +747,6 @@ _2015-12-23_
 _2015-12-22_
 
 - initial release
+
+[FileDownloadConnection-java-link]: https://github.com/lingochamp/FileDownloader/blob/master/library/src/main/java/com/liulishuo/filedownloader/connection/FileDownloadConnection.java
+[FileDownloadUrlConnection-java-link]: https://github.com/lingochamp/FileDownloader/blob/master/library/src/main/java/com/liulishuo/filedownloader/connection/FileDownloadUrlConnection.java

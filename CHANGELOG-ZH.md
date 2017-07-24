@@ -2,6 +2,269 @@
 
 > [ Change log in english](https://github.com/lingochamp/FileDownloader/blob/master/CHANGELOG.md)
 
+## Version 1.6.2
+
+_2017-07-16_
+
+#### 修复
+
+- 修复: 修复当FileDownloader下载文件有一个分块从大于1.99G的地方开始下载，就会发生'offset < 0'异常的问题。 Closes #669
+
+## Version 1.6.1
+
+_2017-07-13_
+
+#### 性能与提高
+
+- 提高实用性: 当返回的`content-length`不等于通过Range计算出来的`content-length`时直接抛回`GiveUpException`而不继续下载。 Closes #636
+
+#### 修复
+
+- 修复: 修复下载出现错误或暂停下载时强制多`sync`了一次的问题。
+- 修复: 修复当从断点中恢复chuncked任务后下载文件被损坏的问题。
+
+## Version 1.6.0
+
+_2017-07-07_
+
+#### 修复
+
+- 修复(no-response): 修复当多线程分块下载同时完成时，有可能会由于线程安全问题导致completed无法得到回调的问题，具体情况参看[这里](https://github.com/lingochamp/FileDownloader/issues/631#issuecomment-313387299)。 Closes #631
+
+## Version 1.5.9
+
+_2017-07-04_
+
+#### 修复
+
+- 修复(duplicate-permission): 修复在Android 5.0或更高版本系统的手机中已经有一个应用引用了1.5.7或更新版本的FileDownloader后，再安装引用1.5.7或更新版本的FileDownloader的应用会报`INSTALL_FAILED_DUPLICATE_PERMISSION`的问题，这个问题是因为在1.5.7版本中我们申明了一个接收结束广播的权限导致，现在我们移除了这个权限申明来修复这个问题。Closes #641
+
+## Version 1.5.8
+
+_2017-06-28_
+
+#### 修复
+
+- 修复(无响应): 修复非常快速的对相同任务启动、暂停来回切换会使得任务到后面没有响应的问题。Closes #625
+
+## Version 1.5.7
+
+_2017-06-25_
+
+#### 新接口
+
+- 支持在`filedownloader.properties`中配置`broadcast.completed`: 决定是否需要在任务下载完成后发送一个完成的广播。 Closes #605
+- 支持接收201的http返回状态码。 Closes #545
+- 为`FileDownloadSerialQueue`支持暂停与继续功能. Closes #547
+- 在FileDownloader内部处理了各类重定向的情况(300、301、302、303、307、308)。 Closes #611
+- 弃用了`FileDownloader#init`取而代之的是`FileDownloader#setup`，现在如果你不需要定制组件，就只需要在使用FileDownloader之前的任意使用调用这个方法就行。 Closes #500
+
+> - 如果你使用`broadcast.completed`并且接收任务完成的广播,你需要在AndroidManifest中注册Action为`filedownloader.intent.action.completed`的广播并且使用`FileDownloadBroadcastHandler`来处理接收到的`Intent`。
+> - 现在, 不再使用`FileDownloader#init`, 取而代之的，如果你需要注册你的定制组件，你需要在`Application#onCreate`中调用`FileDownloader.setupOnApplicationOnCreate(application):InitCustomMaker`, 否则你只需要在使用FileDownloader之前的任意时候调用`FileDownloader.setup(Context)`即可。
+
+#### 修复
+
+- 修复: 修复来`FileDownloadQueueSet`无法处理使wifi-required失效的操作。 感谢 @qtstc
+- 修复(output-stream): 修复当提供的output-stream不支持seek时，FileDownloader无法使用的问题。 Closes #622
+
+#### 性能与提高
+
+- 提高实用性: 覆盖使用不同的Url来复用下载进度的情况（结合`idGenerator`一起使用)。 Closes #617
+
+## Version 1.5.6
+
+_2017-06-18_
+
+#### 修复
+
+- 修复(crash): 修复当调用`findRunningTaskIdBySameTempPath`的同时请求了暂停可能导致NPE奔溃的问题。 Closes #613
+- 修复(crash): 修复返回状态是`206`并且它的ETAG发生变化时导致`IllegalArgumentException`错误奔溃的问题。 Closes #612
+- 修复(crash): 修复当用户请求下载需要Wifi并当前不是Wifi环境时，出现`FileDownloadNetworkPolicyException`未处理导致奔溃的问题。 感谢 @qtstc
+- 修复(crash): 修复当用户直接从`v1.4.3`升级到`v1.5.2`并且在一些其他综合因素下（具体可以参见 #610 ) 初始化数据库时出现`IllegalStateException`错误奔溃的问题。Closes #610
+- 修复(crash): 修复当回调流已经结束当时与此同时刚好出现错误或下载完成或暂停，小概率会出现`IllegalStateException`奔溃的问题。
+- 修复(no-response): 修复在接收到`connected`回调之后，多线程下载建立连接，此时在检验连接与数据获取连接期间服务端数据发生错误或变更导致启动下载后没有响应的问题。
+
+#### 性能与提高
+
+- 提高实用性: 当父级目录创建失败时直接回调`error`。 Closes #542
+- 提高实用性: 处理了返回状态是`416`的情况。 Refs #612
+
+## Version 1.5.5
+
+_2017-06-12_
+
+#### 修复
+
+- 修复(max-network-thread-count): 修复当任务都是多线程下载时，`download.max-network-thread-count`参数没起作用，并同时下载任务无上限的问题。 Closes #607
+
+## Version 1.5.4
+
+_2017-06-11_
+
+#### 新接口
+
+- 通过`IdGenerator`支持了定制下载任务id生成器。 Closes #224
+
+#### 性能与提高
+
+- 提高实用性: 将`FileDownloadModel`的维护从`FileDownloadDatabase`中解藕，让`FileDownloadDatabase`只关心数据库相关操作。
+- 提高实用性: 将数据库初始化的维护工作从默认的数据库实现中解藕出来，让定制的数据库也能够被采用相同机制维护到。
+
+## Version 1.5.3
+
+_2017-06-08_
+
+#### 修复
+
+- 修复(crash): 修复在计算平均速度的过程中`connected`与`completed`几乎同时回调时发生`divide by zero`异常的问题。 Refs #601
+- 修复(crash): 修复触发暂停的同时，`FetchDataTask`已经被创建并请求执行，但是还没有来得及被执行，导致NPE奔溃的问题。 Closes #601
+
+## Version 1.5.2
+
+_2017-06-07_
+
+#### 修复
+
+- 修复(crash): 修复当任务需要回调`error`或者被暂停时，刚好该任务的某个或几个链接完成下载，此时遇到NPE或者是`ConcurrentModificationException`的异常。Closes #598
+- 修复(crash): 修复当任务被暂停时，任务从开始到被暂停还没来得及同步一次数据到文件系统或者数据库，此时遇到NPE的异常。Refs #598
+- 修复(crash): 修复当采用多链接下载一个任务时，非首次建链失败或者是创建`FetchDataTast`失败，此时遇到NPE的异常。Refs #598
+- 修复(speed-calculate): 修复忽略整个下载进度回调，并且只使用`FinishListener`时，此时下载速度始终是`0`的问题。
+- 修复(finish-listener): 修复对于之前已经下载好的任务，并且只监听来`FinishListener`，此时`FinishListener`的`over`方法不会被回调到的问题。
+
+#### 性能与提高
+
+- 提升性能: 开启了默认数据库的WAL，使得读与写可并行操作来提高性能，因为我们的绝大多数场景读写是会在不同线程中同时执行的，开启这个以后会导致内存的增加，但是在大多数情况下极大的提高了数据库的写入速度，并且更加稳定（更少的使用`fsync()`)。
+
+## Version 1.5.1
+
+_2017-06-05_
+
+#### 修复
+
+- 修复(crash): 修复在`FileDownloader.init`中，当没有提供`InitCustomMaker`时出现的NPE奔溃。 Closes #592
+- 修复(callback): 修复当之前有多个链接服务于该任务并且正在从端点恢复时，在`pending`中没有带回其正确的`sofarBytes`的问题。
+- 修复(speed-monitor): 矫正`IDownloadSpeed.Monitor`在断点续传下总平均速度不准确的问题。
+
+#### 性能与提高
+
+- 提高稳定性: 当触发暂停时，主动同步FetchTask中的进度确保其进度得到固化到文件系统。
+- 提高稳定性: 当在`FileDownloader.init`中提供的`context`为空时，抛`IllegalArgumentException`以更早的暴露问题。
+
+## Version 1.5.0
+
+_2017-06-05_
+
+#### 新接口
+
+- 支持对单个任务多连接(多线程)下载。  Closes #102
+- 支持通过`ConnectionCountAdapter`定制对每个任务使用连接(线程)数据的定制(可以通过`FileDownloader#init`设置进去)
+
+#### 性能与提高
+
+- 提高性能: 重构整个下载的逻辑与原始回调逻辑，并删除了1000行左右的`FileDownloadRunnable`。
+
+对于每个任务默认的连接(线程)数目策略，你可以通过`ConnectionCountAdapter`来定制自己的策略:
+
+- 1个连接(线程): 文件大小 [0, 1MB)
+- 2个连接(线程): 文件大小 [1MB, 5MB)
+- 3个连接(线程): 文件大小 [5MB, 50MB)
+- 4个连接(线程): 文件大小 [50MB, 100MB)
+- 5个连接(线程): 文件大小 [100MB, -)
+
+## Version 1.4.3
+
+_2017-05-07_
+
+#### 修复
+
+- 修复: 移除重复的被弃用的方法: `FileDownloader#init(Application)`, 因为`Application`是 `Context`的实现。
+
+## Version 1.4.2
+
+_2017-03-15_
+
+#### 修复
+
+- 修复(Same File Path): 避免多个问题同时对相同的文件写入，一旦存在另外一个正在运行中的任务与当前任务的文件存储路径一致，当前任务将会收到`PathConflictException`来拒绝启动。 Closes #471
+
+#### New Interfaces
+
+-  新增 `FileDownloadSerialQueue#getWaitingTaskCount`: 获取动态串行队列中正在等待启动的任务个数。Refs #345
+
+## Version 1.4.1
+
+_2017-02-03_
+
+#### 修复
+
+- 修复(高并发): 修复由于Messenger在已经收到结束的信息将Task对象赋值为Null以后依然收到其他消息，导致NPE的问题。 Closes #462
+- 修复(`FileDownloadHttpException`): 修复由于在建立连接后无法取到请求头以至于遇到`FileDownloadHttpException`时发生`IllegalStateException`的问题。 Closes #458
+
+## Version 1.4.0
+
+_2017-01-11_
+
+#### 性能与提高
+
+- 提高性能: 优化`FileDownloader#init`中的逻辑, 使其更加的轻量(仅仅做了赋值`context`与`maker`的操作)
+
+#### 修复
+
+- 修复(pause): 修复高并发情况下，当在启动一个任务的时候，很短的时间间隔内去暂停一个任务，可能无法暂停下来任务的问题。 Closes #402
+- 修复(init FileDownloader): 修复在很低概率下在`FileDownloadService`所在进程初始化FileDownloader时出现Crash的问题。 Closes #420  
+- 修复(FileDownloadHttpException): 修复在遇到`FileDownloadHttpException`类型Crash时，由于字符串的formatter无法匹配导致Crash的问题 Closes #438
+
+## Version 1.3.9
+
+_2016-12-18_
+
+### 核心:
+
+- 这个版本开始，你可以定制自己的网络连接组件: [FileDownloadConnection][FileDownloadConnection-java-link]，默认情况下我们使用[这个][FileDownloadUrlConnection-java-link]。
+- 这个版本开始，我们不再默认依赖okhttp，你可以根据自己的需求进行定制。(如果你依然想要使用okhttp，可以考虑集成下这个[仓库](https://github.com/Jacksgong/filedownloader-okhttp3-connection))
+
+> 如果你依然需要配置`timeout`、`proxy`，请不用担心，我已经对默认的网络连接组件实现了这几个接口: [DemoApplication](https://github.com/lingochamp/FileDownloader/blob/master/demo/src/main/java/com/liulishuo/filedownloader/demo/DemoApplication.java#L35)，如果有需要可以看看。
+
+#### 新接口
+
+- 新增 `FileDownloadQueueSet#reuseAndStart`: 添加 '复用并启动'接口，主要用于在启动队列任务之前，先对任务队列中的所有任务进行尽可能的复用。 Ref #383
+- 新增 `FileDownloadConnection`: 支持定制化网络连接组件，不再默认依赖okhttp。 Closes #158
+
+## Version 1.3.0
+
+_2016-10-31_
+
+#### 新接口
+
+- 新增 `FileDownloadSerialQueue`: 便于动态管理串行执行的队列。 Closes #345.
+- 移除 `FileDownloadListener`类中的`callback`方法, 并且新增`FileDownloadListener#isInvalid`方法，用于告知FileDownloader该监听器是否已经无效，不再接收任何消息。
+- 新增 `FileDownloader#clearAllTaskData`: 清空`filedownloader`数据库中的所有数据。 Closes #361.
+
+#### 性能与提高
+
+- 提高实用性(`FileDownloadListener#blackCompleted`): 确保`blockCompleted`回调可以接收任何的`Exception`。 Closes #369.
+- 提高实用性(service-not-connected): 在service-not-connected-helper中输出提示与原因, 这样当你调用有些需要确保下载服务已经连接上的方式，但下载服务没有连接上时，不但在`Logcat`中可以收到原因，还能收到提示。
+
+#### 修复
+
+- 修复(reuse): 修复调用`BaseDownloadTask#pause`之后短时间内调用`BaseDownloadTask#reuse`方法，可能会抛出异常的问题。 Closes #329.
+
+## Version 1.2.2
+
+_2016-10-15_
+
+#### 修复
+
+- 修复(fatal-crash): 修复当任务没有`FileDownloadListener`时，也不能收到该任务`FileDownloadMonitor.IMonitor#onTaskOver`的回调的问题。 Closes #348.
+
+## Version 1.2.1
+
+_2016-10-09_
+
+#### 修复
+
+- <s>修复(fatal-crash): 修复当任务没有`FileDownloadListener`时，也不能收到该任务`FileDownloadMonitor.IMonitor#onTaskOver`的回调的问题。 Closes #348.</s> 十分的抱歉这个问题在1.2.1版本中依然存在，最终在1.2.2中验证修复。
+
 ## Version 1.2.0
 
 _2016-10-04_
@@ -479,3 +742,6 @@ _2015-12-23_
 _2015-12-22_
 
 - initial release
+
+[FileDownloadConnection-java-link]: https://github.com/lingochamp/FileDownloader/blob/master/library/src/main/java/com/liulishuo/filedownloader/connection/FileDownloadConnection.java
+[FileDownloadUrlConnection-java-link]: https://github.com/lingochamp/FileDownloader/blob/master/library/src/main/java/com/liulishuo/filedownloader/connection/FileDownloadUrlConnection.java

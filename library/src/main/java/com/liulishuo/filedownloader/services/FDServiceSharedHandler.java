@@ -31,12 +31,12 @@ import java.lang.ref.WeakReference;
  */
 public class FDServiceSharedHandler extends IFileDownloadIPCService.Stub
         implements IFileDownloadServiceHandler {
-    private final FileDownloadMgr downloadManager;
+    private final FileDownloadManager downloadManager;
     private final WeakReference<FileDownloadService> wService;
 
-    FDServiceSharedHandler(WeakReference<FileDownloadService> wService) {
+    FDServiceSharedHandler(WeakReference<FileDownloadService> wService, FileDownloadManager manager) {
         this.wService = wService;
-        this.downloadManager = new FileDownloadMgr();
+        this.downloadManager = manager;
     }
 
     @Override
@@ -113,6 +113,11 @@ public class FDServiceSharedHandler extends IFileDownloadIPCService.Stub
     @Override
     public boolean clearTaskData(int id) {
         return downloadManager.clearTaskData(id);
+    }
+
+    @Override
+    public void clearAllTaskData() {
+        downloadManager.clearAllTaskData();
     }
 
     @Override

@@ -69,8 +69,7 @@ public class MessageSnapshotGate implements MessageSnapshotFlow.MessageReceiver 
         final String updateSyncLock = Integer.toString(snapshot.getId());
         synchronized (updateSyncLock.intern()) {
             final List<BaseDownloadTask.IRunningTask> taskList = FileDownloadList.getImpl().
-                    getDownloadingList(snapshot.getId());
-
+                    getReceiveServiceTaskList(snapshot.getId());
 
             if (taskList.size() > 0) {
                 final BaseDownloadTask topOriginTask = taskList.get(0).getOrigin();
@@ -83,18 +82,18 @@ public class MessageSnapshotGate implements MessageSnapshotFlow.MessageReceiver 
 
                 if (!transmitMessage(taskList, snapshot)) {
 
-                    String log = "The flow callback did not consumed, id:" + snapshot.getId() + " status:"
-                            + snapshot.getStatus() + " task-count:" + taskList.size();
+                    StringBuilder log = new StringBuilder("The event isn't consumed, id:" + snapshot.getId() + " status:"
+                            + snapshot.getStatus() + " task-count:" + taskList.size());
                     for (BaseDownloadTask.IRunningTask task : taskList) {
-                        log += " | " + task.getOrigin().getStatus();
+                        log.append(" | ").append(task.getOrigin().getStatus());
                     }
-                    FileDownloadLog.w(this, log);
+                    FileDownloadLog.i(this, log.toString());
                 }
 
 
             } else {
-                FileDownloadLog.w(this, "callback event transfer %d," +
-                        " but is contains false", snapshot.getStatus());
+                FileDownloadLog.i(this, "Receive the event %d, but there isn't any running task in " +
+                        "the upper layer", snapshot.getStatus());
             }
 
         }

@@ -37,7 +37,7 @@ public class FDServiceSeparateHandler extends IFileDownloadIPCService.Stub
         implements MessageSnapshotFlow.MessageReceiver, IFileDownloadServiceHandler {
 
     private final RemoteCallbackList<IFileDownloadIPCCallback> callbackList = new RemoteCallbackList<>();
-    private final FileDownloadMgr downloadManager;
+    private final FileDownloadManager downloadManager;
     private final WeakReference<FileDownloadService> wService;
 
     @SuppressWarnings("UnusedReturnValue")
@@ -56,9 +56,9 @@ public class FDServiceSeparateHandler extends IFileDownloadIPCService.Stub
         return n;
     }
 
-    FDServiceSeparateHandler(WeakReference<FileDownloadService> wService) {
+    FDServiceSeparateHandler(WeakReference<FileDownloadService> wService, FileDownloadManager manager) {
         this.wService = wService;
-        this.downloadManager = new FileDownloadMgr();
+        this.downloadManager = manager;
 
         MessageSnapshotFlow.getImpl().setReceiver(this);
     }
@@ -139,6 +139,11 @@ public class FDServiceSeparateHandler extends IFileDownloadIPCService.Stub
     @Override
     public boolean clearTaskData(int id) throws RemoteException {
         return downloadManager.clearTaskData(id);
+    }
+
+    @Override
+    public void clearAllTaskData() throws RemoteException {
+        downloadManager.clearAllTaskData();
     }
 
     @Override

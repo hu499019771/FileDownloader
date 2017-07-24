@@ -18,6 +18,7 @@ package com.liulishuo.filedownloader.services;
 
 import android.util.SparseArray;
 
+import com.liulishuo.filedownloader.download.DownloadLaunchRunnable;
 import com.liulishuo.filedownloader.util.FileDownloadExecutors;
 import com.liulishuo.filedownloader.util.FileDownloadLog;
 import com.liulishuo.filedownloader.util.FileDownloadProperties;
@@ -31,7 +32,7 @@ import java.util.concurrent.ThreadPoolExecutor;
  */
 class FileDownloadThreadPool {
 
-    private SparseArray<FileDownloadRunnable> runnablePool = new SparseArray<>();
+    private SparseArray<DownloadLaunchRunnable> runnablePool = new SparseArray<>();
 
     private ThreadPoolExecutor mThreadPool;
 
@@ -70,16 +71,16 @@ class FileDownloadThreadPool {
         return true;
     }
 
-    public void execute(FileDownloadRunnable runnable) {
-        runnable.onPending();
+    public void execute(DownloadLaunchRunnable launchRunnable) {
+        launchRunnable.pending();
         synchronized (this) {
-            runnablePool.put(runnable.getId(), runnable);
+            runnablePool.put(launchRunnable.getId(), launchRunnable);
         }
-        mThreadPool.execute(runnable);
+        mThreadPool.execute(launchRunnable);
 
         final int CHECK_THRESHOLD_VALUE = 600;
         if (mIgnoreCheckTimes >= CHECK_THRESHOLD_VALUE) {
-            checkNoExist();
+            filterOutNoExist();
             mIgnoreCheckTimes = 0;
         } else {
             mIgnoreCheckTimes++;
@@ -87,11 +88,11 @@ class FileDownloadThreadPool {
     }
 
     public void cancel(final int id) {
-        checkNoExist();
+        filterOutNoExist();
         synchronized (this) {
-            FileDownloadRunnable r = runnablePool.get(id);
+            DownloadLaunchRunnable r = runnablePool.get(id);
             if (r != null) {
-                r.cancelRunnable();
+                r.pause();
                 boolean result = mThreadPool.remove(r);
                 if (FileDownloadLog.NEED_LOG) {
                     // If {@code result} is false, must be: the Runnable has been running before
@@ -106,31 +107,57 @@ class FileDownloadThreadPool {
 
     private int mIgnoreCheckTimes = 0;
 
-    private synchronized void checkNoExist() {
-        SparseArray<FileDownloadRunnable> correctedRunnablePool = new SparseArray<>();
-        for (int i = 0; i < runnablePool.size(); i++) {
+    private synchronized void filterOutNoExist() {
+        SparseArray<DownloadLaunchRunnable> correctedRunnablePool = new SparseArray<>();
+        final int size = runnablePool.size();
+        for (int i = 0; i < size; i++) {
             final int key = runnablePool.keyAt(i);
-            final FileDownloadRunnable runnable = runnablePool.get(key);
-            if (runnable.isExist()) {
+            final DownloadLaunchRunnable runnable = runnablePool.get(key);
+            if (runnable.isAlive()) {
                 correctedRunnablePool.put(key, runnable);
             }
         }
         runnablePool = correctedRunnablePool;
-
     }
 
     public boolean isInThreadPool(final int downloadId) {
-        final FileDownloadRunnable runnable = runnablePool.get(downloadId);
-        return runnable != null && runnable.isExist();
+        final DownloadLaunchRunnable runnable = runnablePool.get(downloadId);
+        return runnable != null && runnable.isAlive();
+    }
+
+    public int findRunningTaskIdBySameTempPath(String tempFilePath, int excludeId) {
+        if (null == tempFilePath) {
+            return 0;
+        }
+
+        final int size = runnablePool.size();
+        for (int i = 0; i < size; i++) {
+            final DownloadLaunchRunnable runnable = runnablePool.valueAt(i);
+            // why not clone, no out-of-bounds exception? -- yes, we dig into SparseArray and find out
+            // there are only two ways can change mValues: GrowingArrayUtils#insert and GrowingArrayUtils#append
+            // they all only grow size, and valueAt only get value on mValues.
+            if (runnable == null) {
+                // why it is possible to occur null on here, because the value on  runnablePool can
+                // be remove on #cancel method.
+                continue;
+            }
+
+            if (runnable.isAlive() && runnable.getId() != excludeId &&
+                    tempFilePath.equals(runnable.getTempFilePath())) {
+                return runnable.getId();
+            }
+        }
+
+        return 0;
     }
 
     public synchronized int exactSize() {
-        checkNoExist();
+        filterOutNoExist();
         return runnablePool.size();
     }
 
     public synchronized List<Integer> getAllExactRunningDownloadIds() {
-        checkNoExist();
+        filterOutNoExist();
 
         List<Integer> list = new ArrayList<>();
         for (int i = 0; i < runnablePool.size(); i++) {

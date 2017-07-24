@@ -172,22 +172,16 @@ public interface BaseDownloadTask {
      * <strong>Note:</strong> We have already handled Etag internal for guaranteeing tasks resuming
      * from the breakpoint, in other words, if the task has downloaded and got Etag, we will add the
      * 'If-Match' and the 'Range' K-V to its request header automatically.
-     *
-     * @see okhttp3.Headers.Builder#add(String, String)
      */
     BaseDownloadTask addHeader(final String name, final String value);
 
     /**
      * Add a field with the specified value to the request header.
-     *
-     * @see okhttp3.Headers.Builder#add(String, String)
      */
     BaseDownloadTask addHeader(final String line);
 
     /**
      * Remove all fields in the request header.
-     *
-     * @see okhttp3.Headers.Builder#removeAll(String)
      */
     BaseDownloadTask removeAllHeaders(final String name);
 
@@ -249,6 +243,10 @@ public interface BaseDownloadTask {
 
     /**
      * Reuse this task withhold request params: path、url、header、isForceReDownloader、etc.
+     * <p>
+     * <strong>Note:</strong>If the task has been over({@link FileDownloadStatus#isOver(int)}), but
+     * the over-message has not been handover to the listener, since the callback is asynchronous,
+     * once your invoke this 'reuse' method, that message would be discard, for free the messenger.
      *
      * @return {@code true} if reuse this task successfully. {@code false} otherwise.
      */
@@ -607,6 +605,7 @@ public interface BaseDownloadTask {
         /**
          * @return {@code true} if the task has already finished.
          */
+        @SuppressWarnings("BooleanMethodIsAlwaysInverted")
         boolean isOver();
 
         /**
@@ -660,6 +659,20 @@ public interface BaseDownloadTask {
          * Currently, this rescue is occurred when the filedownloader service connected.
          */
         void startTaskByRescue();
+
+        /**
+         * Get the object as a lock for synchronized with the pause area.
+         *
+         * @return the object as a lock for synchronized with the pause area.
+         */
+        Object getPauseLock();
+
+        /**
+         * Whether contain finish listener or not.
+         *
+         * @return {@code true} if there is finish listener on the task.
+         */
+        boolean isContainFinishListener();
     }
 
     /**

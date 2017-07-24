@@ -1,5 +1,5 @@
 # FileDownloader
-Android 文件下载引擎，稳定、高效、简单易用
+Android 文件下载引擎，稳定、高效、灵活、简单易用
 
 [![Gitter][gitter_svg]][gitter_url]
 [![Download][bintray_svg]][bintray_url]
@@ -7,8 +7,6 @@ Android 文件下载引擎，稳定、高效、简单易用
 [![Build Status][build_status_svg]][build_status_link]
 
 > [README DOC](https://github.com/lingochamp/FileDownloader/blob/master/README.md)
-
-> 本引擎依赖okhttp 3.4.1
 
 ---
 
@@ -21,7 +19,9 @@ Android 文件下载引擎，稳定、高效、简单易用
 ### 特点
 
 - 简单易用
+- 单任务多线程/多连接/分块下载(并支持通过`ConnectionCountAdapter`定制)
 - 高并发
+- 灵活
 - 可选择性支持: 独立/非独立进程
 - 自动断点续传
 
@@ -31,11 +31,6 @@ Android 文件下载引擎，稳定、高效、简单易用
 - 暂停: paused, 恢复: 直接调用start，默认就是断点续传
 - 引擎默认会打开避免掉帧的处理(使得在有些情况下回调(FileDownloadListener)不至于太频繁导致ui线程被ddos), 如果你希望关闭这个功能（关闭以后，所有回调会与0.1.9之前的版本一样，所有的回调会立马抛一个消息ui线程(Handler)）
 - 如果没有特殊需要，直接通过配置`filedownloader.properties`将`process.non-separate`置为`true`，可以有效减少每次回调IPC带来的I/O。
-
-#### 使用okHttp并使用其中的一些默认属性
-
-- retryOnConnectionFailure: Unreachable IP addresses/Stale pooled connections/Unreachable proxy servers
-- connection/read/write time out 10s
 
 ---
 
@@ -50,6 +45,8 @@ Android 文件下载引擎，稳定、高效、简单易用
 
 ## I. 效果
 
+![][single_demo_gif]
+![][chunked_demo_gif]
 ![][serial_tasks_demo_gif]
 ![][parallel_tasks_demo_gif]
 ![][tasks_manager_demo_gif]
@@ -63,30 +60,16 @@ Android 文件下载引擎，稳定、高效、简单易用
 在项目中引用:
 
 ```groovy
-compile 'com.liulishuo.filedownloader:library:1.2.0'
+compile 'com.liulishuo.filedownloader:library:1.6.2'
 ```
 
 > 如果是eclipse引入jar包参考: [这里](https://github.com/lingochamp/FileDownloader/issues/212#issuecomment-232240415)
 
-#### 全局初始化在`Application.onCreate`中
+#### 全局初始化
 
-> 如果希望定制化用于下载的`OkHttpClient`，建议参考[DemoApplication](https://github.com/lingochamp/FileDownloader/blob/master/demo/src/main/java/com/liulishuo/filedownloader/demo/DemoApplication.java)
+如果你需要注册你的定制组件，你需要在`Application#onCreate`中调用`FileDownloader.setupOnApplicationOnCreate(application):InitCustomMaker`, 否则你只需要在使用FileDownloader之前的任意时候调用`FileDownloader.setup(Context)`即可。
 
-```java
-public XXApplication extends Application{
-
-    ...
-    @Override
-    public void onCreate() {
-        /**
-         * 仅仅是缓存Application的Context，不耗时
-         */
-        FileDownloader.init(getApplicationContext);
-    }
-
-    ...
-}
-```
+这些初始化方法都十分的简单，不会启动下载服务，一般都是在10ms内完成。
 
 #### 启动单任务下载
 
@@ -228,6 +211,8 @@ if (parallel) {
 //            FileDownloader.getImpl().create(url).setSyncCallback(true)
 //    );
 }
+
+// 串行任务动态管理也可以使用FileDownloadSerialQueue。
 ```
 
 #### 全局接口说明(`FileDownloader`)
@@ -236,8 +221,8 @@ if (parallel) {
 
 | 方法名 | 备注
 | --- | ---
-| init(Context) |  缓存Context，不会启动下载进程
-| init(Context, InitCustomMaker) | 缓存Context，不会启动下载进程；在下载进程启动的时候，会传入定制化组件
+| setup(Context) | 如果不需要注册定制组件，就使用该方法在使用下载引擎前调用，该方法只会缓存Context
+| setupOnApplicationOnCreate(application):InitCustomMaker | 如果需要注册定制组件，就在Application#onCreate中调用该方法来注册定制组件以及初始化下载引擎，该方法不会启动下载服务
 | create(url:String) | 创建一个下载任务
 | start(listener:FileDownloadListener, isSerial:boolean) | 启动是相同监听器的任务，串行/并行启动
 | pause(listener:FileDownloadListener) | 暂停启动相同监听器的任务
@@ -263,15 +248,20 @@ if (parallel) {
 | setTaskCompleted(url:String, path:String, totalBytes:long) | 用于告诉FileDownloader引擎，以指定Url与Path的任务已经通过其他方式(非FileDownloader)下载完成
 | setTaskCompleted(taskAtomList:List<FileDownloadTaskAtom>) | 用于告诉FileDownloader引擎，指定的一系列的任务都已经通过其他方式(非FileDownloader)下载完成
 | setMaxNetworkThreadCount(int) | 设置最大并行下载的数目(网络下载线程数), [1,12]
+| clearAllTaskData() | 清空`filedownloader`数据库中的所有数据
 
 #### 定制化组件接口说明(`InitCustomMaker`)
 
 | 方法名 | 需实现接口 | 已有组件 | 默认组件 | 说明
 | --- | --- | --- | --- | ---
 | database | FileDownloadDatabase | DefaultDatabaseImpl | DefaultDatabaseImpl | 传入定制化数据库组件，用于存储用于断点续传的数据
-| okHttpClient | okHttpClient | okHttpClient | okHttpClient | 传入定制化的okHttpClient，用于下载时使用
+| connection | FileDownloadConnection | FileDownloadUrlConnection | FileDownloadUrlConnection | 传入定制化的网络连接组件，用于下载时建立网络连接
 | outputStreamCreator | FileDownloadOutputStream | FileDownloadRandomAccessFile、FileDownloadBufferedOutputStream、FileDownloadOkio | FileDownloadRandomAccessFile | 传入输出流组件，用于下载时写文件使用
 | maxNetworkThreadCount | - | - | 3 | 传入创建下载引擎时，指定可用的下载线程个数
+| ConnectionCountAdapter | ConnectionCountAdapter | DefaultConnectionCountAdapter | DefaultConnectionCountAdapter | 根据任务指定其线程数
+| IdGenerator | IdGenerator | DefaultIdGenerator | DefaultIdGenerator | 自定义任务Id生成器
+
+> 如果你希望Okhttp作为你的网络连接组件，可以使用[这个库](https://github.com/Jacksgong/filedownloader-okhttp3-connection)。
 
 #### Task接口说明
 
@@ -416,7 +406,9 @@ blockComplete -> completed
 | download.min-progress-time | 最小缓冲时间，用于判定是否是时候将缓冲区中进度同步到数据库，以及是否是时候要确保下缓存区的数据都已经写文件。值越小，更新会越频繁，下载速度会越慢，但是应对进程被无法预料的情况杀死时会更加安全 | 2000
 | download.max-network-thread-count | 用于同时下载的最大网络线程数, 区间[1, 12] | 3
 | file.non-pre-allocation | 是否不需要在开始下载的时候，预申请整个文件的大小(`content-length`) | false
+| broadcast.completed | 是否需要在任务下载完成后发送一个完成的广播 | false
 
+> 如果你使用`broadcast.completed`并且接收任务完成的广播,你需要注册Action为`filedownloader.intent.action.completed`的广播并且使用`FileDownloadBroadcastHandler`来处理接收到的`Intent`。
 
 III. 异常处理
 
@@ -428,6 +420,8 @@ III. 异常处理
 | `FileDownloadGiveUpRetryException` | 在请求返回的 response-header 中没有带有文件大小(content-length)，并且不是流媒体(transfer-encoding)的情况下会抛出该异常；出现这个异常，将会忽略所有重试的机会(`BaseDownloadTask#setAutoRetryTimes`). 你可以通过在 `filedownloader.properties`中添加 `http.lenient=true` 来忽略这个异常，并且在该情况下，直接作为流媒体进行下载。
 | `FileDownloadOutOfSpaceException` | 当将要下载的文件大小大于剩余磁盘大小时，会抛出这个异常。
 | 其他 | 程序错误。
+| `FileDownloadNetworkPolicyException` | 设置了`BaseDownloadTask#setWifiRequired(true)`，在下载过程中，一旦发现网络情况转为非Wifi环境，便会抛回这个异常
+| `PathConflictException` | 当有一个正在下载的任务，它的存储路径与当前任务的存储路径完全一致，为了避免多个任务对同一个文件进行写入，当前任务便会抛回这个异常
 
 
 
@@ -486,6 +480,8 @@ limitations under the License.
 [tasks_manager_demo_gif]: https://github.com/lingochamp/FileDownloader/raw/master/art/tasks_manager_demo.gif
 [avoid_drop_frames_1_gif]: https://github.com/lingochamp/FileDownloader/raw/master/art/avoid_drop_frames1.gif
 [avoid_drop_frames_2_gif]: https://github.com/lingochamp/FileDownloader/raw/master/art/avoid_drop_frames2.gif
+[single_demo_gif]: https://github.com/lingochamp/FileDownloader/raw/master/art/single_demo.gif
+[chunked_demo_gif]: https://github.com/lingochamp/FileDownloader/raw/master/art/chunked_demo.gif
 [bintray_svg]: https://api.bintray.com/packages/jacksgong/maven/FileDownloader/images/download.svg
 [bintray_url]: https://bintray.com/jacksgong/maven/FileDownloader/_latestVersion
 [file_download_listener_callback_flow_png]: https://github.com/lingochamp/FileDownloader/raw/master/art/filedownloadlistener_callback_flow.png
